@@ -221,6 +221,7 @@ class TransformersLLM(LLM, MagpieChatTemplateMixin, CudaDevicePlacementMixin):
         pipeline.
 
         Args:
+            stop_strings:
             inputs: a list of inputs in chat format to generate responses for.
             num_generations: the number of generations to create per input. Defaults to
                 `1`.
@@ -286,6 +287,7 @@ class TransformersLLM(LLM, MagpieChatTemplateMixin, CudaDevicePlacementMixin):
 
         if stop_strings:
             generation_kwargs["stop_strings"] = stop_strings
+            generation_kwargs["tokenizer"] = self._pipeline.tokenizer
 
         outputs: List[List[Dict[str, str]]] = self._pipeline(  # type: ignore
             prepared_inputs,
