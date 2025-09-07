@@ -215,6 +215,7 @@ class TransformersLLM(LLM, MagpieChatTemplateMixin, CudaDevicePlacementMixin):
             early_stopping: bool = False,
             length_penalty: float = 1.0,
             no_repeat_ngram_size: int = 0,
+            stop_strings: Optional[List[str]] = None,
     ) -> List[GenerateOutput]:
         """Generates `num_generations` responses for each input using the text generation
         pipeline.
@@ -282,6 +283,9 @@ class TransformersLLM(LLM, MagpieChatTemplateMixin, CudaDevicePlacementMixin):
                 "top_k": top_k,
                 "do_sample": do_sample,
             })
+
+        if stop_strings:
+            generation_kwargs["stop_strings"] = stop_strings
 
         outputs: List[List[Dict[str, str]]] = self._pipeline(  # type: ignore
             prepared_inputs,
