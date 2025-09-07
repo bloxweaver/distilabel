@@ -200,15 +200,21 @@ class TransformersLLM(LLM, MagpieChatTemplateMixin, CudaDevicePlacementMixin):
 
     @validate_call
     def generate(  # type: ignore
-        self,
-        inputs: List[StandardInput],
-        num_generations: int = 1,
-        max_new_tokens: int = 128,
-        temperature: float = 0.1,
-        repetition_penalty: float = 1.1,
-        top_p: float = 1.0,
-        top_k: int = 0,
-        do_sample: bool = True,
+            self,
+            inputs: List[StandardInput],
+            num_generations: int = 1,
+            max_new_tokens: int = 128,
+            temperature: float = 0.1,
+            repetition_penalty: float = 1.1,
+            top_p: float = 1.0,
+            top_k: int = 0,
+            do_sample: bool = True,
+            num_beams: int = 1,
+            num_beam_groups: Optional[int] = None,
+            diversity_penalty: float = 0.0,
+            early_stopping: bool = False,
+            length_penalty: float = 1.0,
+            no_repeat_ngram_size: int = 0,
     ) -> List[GenerateOutput]:
         """Generates `num_generations` responses for each input using the text generation
         pipeline.
@@ -225,25 +231,63 @@ class TransformersLLM(LLM, MagpieChatTemplateMixin, CudaDevicePlacementMixin):
             top_p: the top-p value to use for the generation. Defaults to `1.0`.
             top_k: the top-k value to use for the generation. Defaults to `0`.
             do_sample: whether to use sampling or not. Defaults to `True`.
+            num_beams: the number of beams to use for beam search. Defaults to `1`.
+            num_beam_groups: the number of groups to divide num_beams into for diverse beam search.
+                Defaults to `None`.
+            diversity_penalty: the penalty applied to encourage diversity in diverse beam search.
+                Defaults to `0.0`.
+            early_stopping: whether to stop the beam search when at least num_beams sentences
+                are finished per batch or not. Defaults to `False`.
+            length_penalty: exponential penalty to the length that is used with beam-based
+                generation. Defaults to `1.0`.
+            no_repeat_ngram_size: if set to int > 0, all ngrams of that size can only occur
+                once. Defaults to `0`.
 
         Returns:
             A list of lists of strings containing the generated responses for each input.
         """
         prepared_inputs = [self.prepare_input(input=input) for input in inputs]
 
+        # Build generation kwargs
+        generation_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "repetition_penalty": repetition_penalty,
+            "num_return_sequences": num_generations,
+            "prefix_allowed_tokens_fn": self._prefix_allowed_tokens_fn,
+            "pad_token_id": self._pipeline.tokenizer.eos_token_id,
+            "logits_processor": self._logits_processor,
+        }
+
+        # Add beam search parameters if beam search is enabled
+        if num_beams > 1:
+            generation_kwargs.update({
+                "num_beams": num_beams,
+                "early_stopping": early_stopping,
+                "length_penalty": length_penalty,
+                "no_repeat_ngram_size": no_repeat_ngram_size,
+                "do_sample": False,  # Beam search doesn't use sampling
+            })
+
+            # Add diverse beam search parameters if specified
+            if num_beam_groups is not None and num_beam_groups > 1:
+                generation_kwargs.update({
+                    "num_beam_groups": num_beam_groups,
+                    "diversity_penalty": diversity_penalty,
+                })
+        else:
+            # Add sampling parameters only when not using beam search
+            generation_kwargs.update({
+                "temperature": temperature,
+                "top_p": top_p,
+                "top_k": top_k,
+                "do_sample": do_sample,
+            })
+
         outputs: List[List[Dict[str, str]]] = self._pipeline(  # type: ignore
             prepared_inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            repetition_penalty=repetition_penalty,
-            top_p=top_p,
-            top_k=top_k,
-            do_sample=do_sample,
-            num_return_sequences=num_generations,
-            prefix_allowed_tokens_fn=self._prefix_allowed_tokens_fn,
-            pad_token_id=self._pipeline.tokenizer.eos_token_id,
-            logits_processor=self._logits_processor,
+            **generation_kwargs
         )
+
         llm_output = [
             [generation["generated_text"] for generation in output]
             for output in outputs
