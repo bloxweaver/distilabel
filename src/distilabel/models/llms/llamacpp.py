@@ -121,7 +121,7 @@ class LlamaCppLLM(LLM, MagpieChatTemplateMixin):
             model_path=str(Path.home() / model_path),  # type: ignore
             n_gpu_layers=-1,
             n_ctx=1024,
-            structured_output={"format": "json", "schema": Character},
+            structured_output={"format": "json", "schema": User},
         )
 
         llm.load()
